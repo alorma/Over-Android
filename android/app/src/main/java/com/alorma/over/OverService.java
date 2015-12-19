@@ -1,20 +1,18 @@
 package com.alorma.over;
 
-import android.Manifest;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
+import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.PixelFormat;
-import android.graphics.drawable.Drawable;
 import android.os.Binder;
 import android.os.IBinder;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
-import android.support.v4.content.ContextCompat;
 import android.view.Gravity;
 import android.view.WindowManager;
 import android.widget.ImageView;
@@ -23,8 +21,10 @@ import java.io.IOException;
 import java.io.InputStream;
 
 public class OverService extends Service {
+
     private WindowManager windowManager;
     private ImageView image;
+    private BroadcastReceiver broadcastReceiver;
 
     public OverService() {
 
@@ -34,6 +34,16 @@ public class OverService extends Service {
     public void onCreate() {
         super.onCreate();
         execute();
+
+        IntentFilter filter = new IntentFilter(BuildConfig.APPLICATION_ID + ".stop");
+        broadcastReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                hideImage();
+            }
+        };
+
+        registerReceiver(broadcastReceiver, filter);
     }
 
     private void execute() {
@@ -70,7 +80,7 @@ public class OverService extends Service {
             WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.MATCH_PARENT,
-                    WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY,
+                    WindowManager.LayoutParams.TYPE_PHONE,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                     PixelFormat.TRANSLUCENT);
 
@@ -85,12 +95,19 @@ public class OverService extends Service {
         }
     }
 
-    @Override
-    public void onDestroy() {
+    private void hideImage() {
         if (image != null && windowManager != null) {
             windowManager.removeView(image);
         }
         NotificationManagerCompat.from(this).cancel(0);
+    }
+
+    @Override
+    public void onDestroy() {
+        hideImage();
+        if (broadcastReceiver != null) {
+            unregisterReceiver(broadcastReceiver);
+        }
         super.onDestroy();
     }
 
