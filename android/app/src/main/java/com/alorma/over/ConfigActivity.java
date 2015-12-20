@@ -12,10 +12,23 @@ import android.provider.Settings;
 import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.util.Log;
+import android.view.View;
 import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.Switch;
 
 import com.alorma.over.service.OverService;
+import com.koushikdutta.async.ByteBufferList;
+import com.koushikdutta.async.DataEmitter;
+import com.koushikdutta.async.callback.DataCallback;
+import com.koushikdutta.async.future.Future;
+import com.koushikdutta.async.future.FutureCallback;
+import com.koushikdutta.async.http.AsyncHttpClient;
+import com.koushikdutta.async.http.AsyncHttpRequest;
+import com.koushikdutta.async.http.WebSocket;
+
+import java.util.concurrent.ExecutionException;
 
 
 public class ConfigActivity extends AppCompatActivity implements CompoundButton.OnCheckedChangeListener {
@@ -34,6 +47,10 @@ public class ConfigActivity extends AppCompatActivity implements CompoundButton.
 
         }
     };
+    private EditText ipText;
+    private EditText portText;
+    private String TAG = "ALORMAWS";
+    private WebSocket webSocket;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,7 +62,60 @@ public class ConfigActivity extends AppCompatActivity implements CompoundButton.
         activate = (Switch) findViewById(R.id.activate);
         activate.setOnCheckedChangeListener(this);
 
+
+        ipText = (EditText) findViewById(R.id.ip);
+        portText = (EditText) findViewById(R.id.port);
+
+        findViewById(R.id.connect).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Uri uri = Uri.EMPTY.buildUpon()
+                        .scheme("ws")
+                        .encodedAuthority(ipText.getText().toString() + ":" + portText.getText().toString())
+                        .build();
+
+                connect(uri);
+            }
+        });
+
         startOverService();
+    }
+
+    private void connect(Uri uri) {
+        Future<WebSocket> socketFuture = AsyncHttpClient.getDefaultInstance().websocket(uri.toString(), "", new AsyncHttpClient.WebSocketConnectCallback() {
+            @Override
+            public void onCompleted(Exception ex, WebSocket webSocket) {
+                if (ex != null) {
+                    ex.printStackTrace();
+                    return;
+                }
+                webSocket.send("a string");
+                webSocket.send(new byte[10]);
+                webSocket.setStringCallback(new WebSocket.StringCallback() {
+                    public void onStringAvailable(String s) {
+                        Log.i(TAG, s);
+                    }
+                });
+                webSocket.setDataCallback(new DataCallback() {
+                    public void onDataAvailable(DataEmitter emitter, ByteBufferList byteBufferList) {
+                        Log.i(TAG, "I got some bytes!");
+                        byteBufferList.recycle();
+                    }
+                });
+            }
+        });
+
+        socketFuture.setCallback(new FutureCallback<WebSocket>() {
+            @Override
+            public void onCompleted(Exception e, WebSocket result) {
+                if (e != null) {
+                    e.printStackTrace();
+                } else if (result != null) {
+                    webSocket = result;
+                    webSocket.send("Hi! from Android");
+                }
+            }
+        });
     }
 
     @TargetApi(Build.VERSION_CODES.M)
@@ -112,6 +182,11 @@ public class ConfigActivity extends AppCompatActivity implements CompoundButton.
             serviceBinder.disconnect();
         }
         unbindService(serviceConn);
+
+        if (webSocket != null) {
+            webSocket.close();
+        }
+
         super.onDestroy();
     }
 }
